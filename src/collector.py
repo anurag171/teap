@@ -6,12 +6,11 @@ import aiofiles
 from datetime import datetime
 from typing import Optional, Dict, Any, List
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, HTTPException, UploadFile, File, Form
-from pydantic import BaseModel
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, UploadFile, File, Form
 from sqlalchemy.orm import Session
 
 from src.services.db_service import get_db
-from src.models import Evidence, EvidenceType, Scenario, Step
+from src.models import Evidence, EvidenceType
 
 router = APIRouter()
 
@@ -44,14 +43,13 @@ class EvidenceCollector:
         context: Optional[Dict[str, Any]] = None
     ) -> Evidence:
         """Captures a UI screenshot: saves image to Filestore and logs record in DB."""
-        timestamp = datetime.utcnow()
+        timestamp = datetime.now()
         file_uuid = uuid.uuid4()
         
-        # Structure relative storage path: scenarios/{scenario_id}/step_{step_id}/{uuid}.png
         step_folder = f"step_{step_id}" if step_id else "general"
         relative_path = f"scenarios/{scenario_id}/{step_folder}/{file_uuid}.png"
 
-        # 1. Save file to disk/filestore
+        # 1. Save file to disk/filestore (Async I/O)
         await self.save_file_to_filestore(relative_path, image_bytes)
 
         # 2. Construct static serving URL
@@ -77,7 +75,7 @@ class EvidenceCollector:
         self.db.refresh(evidence)
         return evidence
 
-    async def capture_db_query(
+    def capture_db_query(
         self,
         scenario_id: str,
         step_id: Optional[int],
@@ -86,8 +84,8 @@ class EvidenceCollector:
         result: Optional[List[Dict[str, Any]]] = None,
         context: Optional[Dict[str, Any]] = None
     ) -> Evidence:
-        """Captures DB query execution metadata and result sets."""
-        timestamp = datetime.utcnow()
+        """Captures DB query execution metadata and result sets (Synchronous DB write)."""
+        timestamp = datetime.now()
         content = {
             "query": query,
             "parameters": params or [],
@@ -108,15 +106,15 @@ class EvidenceCollector:
         self.db.refresh(evidence)
         return evidence
 
-    async def capture_payment_event(
+    def capture_payment_event(
         self,
         scenario_id: str,
         step_id: Optional[int],
         payment_data: Dict[str, Any],
         context: Optional[Dict[str, Any]] = None
     ) -> Evidence:
-        """Captures payment transaction payloads (Stripe, PayPal, etc.)."""
-        timestamp = datetime.utcnow()
+        """Captures payment transaction payloads (Synchronous DB write)."""
+        timestamp = datetime.now()
         payment_record = {
             "transaction_id": payment_data.get("id") or payment_data.get("transaction_id"),
             "amount": payment_data.get("amount"),
@@ -198,7 +196,6 @@ async def websocket_collector(websocket: WebSocket, scenario_id: str, db: Sessio
             context = data.get("context", {})
 
             if evidence_type == "screenshot":
-                # Expects 'image' as a base64 encoded string
                 raw_b64 = data.get("image", "")
                 if "," in raw_b64:
                     raw_b64 = raw_b64.split(",")[1]
@@ -218,7 +215,8 @@ async def websocket_collector(websocket: WebSocket, scenario_id: str, db: Sessio
                 })
 
             elif evidence_type == "db_query":
-                evidence = await collector.capture_db_query(
+                # Synchronous call - no await needed
+                evidence = collector.capture_db_query(
                     scenario_id=scenario_id,
                     step_id=step_id,
                     query=data.get("query", ""),
@@ -233,7 +231,8 @@ async def websocket_collector(websocket: WebSocket, scenario_id: str, db: Sessio
                 })
 
             elif evidence_type == "payment":
-                evidence = await collector.capture_payment_event(
+                # Synchronous call - no await needed
+                evidence = collector.capture_payment_event(
                     scenario_id=scenario_id,
                     step_id=step_id,
                     payment_data=data.get("payment_data", {}),

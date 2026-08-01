@@ -47,7 +47,7 @@ async def upload_screenshot(
         step_id=step_id,
         type="screenshot",
         location=s3_key,
-        context={"url": s3_url, "uploaded_at": datetime.utcnow().isoformat()}
+        context={"url": s3_url, "uploaded_at": datetime.now().isoformat()}
     )
     db.add(evidence)
     db.commit()

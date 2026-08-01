@@ -17,7 +17,7 @@ s3_client = boto3.client(
     config=Config(signature_version='s3v4')
 )
 
-async def upload_to_s3(key: str, file_bytes: bytes, content_type: str) -> str:
+def upload_to_s3(key: str, file_bytes: bytes, content_type: str) -> str:
     s3_client.put_object(
         Bucket=BUCKET_NAME,
         Key=key,
