@@ -49,6 +49,9 @@ AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID", "minioadmin")
 AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY", "minioadmin")
 S3_ENDPOINT_URL = os.getenv("S3_ENDPOINT_URL", "http://localhost:9000")
 
+SCENARIO_ID = "scenarios.id"
+SCENARIO_NOT_FOUND = "Scenario not found"
+
 # Database Engine Setup
 engine_args = {"echo": False, "future": True}
 if DATABASE_URL.startswith("sqlite"):
@@ -122,7 +125,8 @@ class Step(Base):
     __tablename__ = "steps"
     
     id = Column(Integer, primary_key=True)
-    scenario_id = Column(String, ForeignKey("scenarios.id"), nullable=False, index=True)
+    
+    scenario_id = Column(String, ForeignKey(SCENARIO_ID), nullable=False, index=True)
     step_number = Column(Integer, nullable=False)
     description = Column(String, nullable=False)
     expected_result = Column(String, nullable=True)
@@ -138,7 +142,7 @@ class Evidence(Base):
     __tablename__ = "evidence"
     
     id = Column(String, primary_key=True, default=lambda: str(uuid_module.uuid4()))
-    scenario_id = Column(String, ForeignKey("scenarios.id"), nullable=False, index=True)
+    scenario_id = Column(String, ForeignKey(SCENARIO_ID), nullable=False, index=True)
     step_id = Column(Integer, nullable=True)
     type = Column(Enum(EvidenceType), nullable=False, index=True)
     location = Column(String(1024), nullable=True)  # S3 key for files
@@ -157,7 +161,7 @@ class Report(Base):
     __tablename__ = "reports"
     
     id = Column(String, primary_key=True, default=lambda: str(uuid_module.uuid4()))
-    scenario_id = Column(String, ForeignKey("scenarios.id"), nullable=True)
+    scenario_id = Column(String, ForeignKey(SCENARIO_ID), nullable=True)
     format = Column(String(10), nullable=False)  # 'pdf', 'html', 'json'
     location = Column(String(1024), nullable=True)  # S3 key
     summary = Column(String, nullable=True)  # AI summary
@@ -328,7 +332,7 @@ class EvidenceCollector:
         key = f"scenarios/{scenario_id}/step_{step_id}/{datetime.now().isoformat()}.png"
         
         # Upload to S3
-        s3_url = await S3Service.upload_file(key, image_data, 'image/png')
+       # s3_url = await S3Service.upload_file(key, image_data, 'image/png')
         
         # Store in database
         evidence = Evidence(
@@ -563,7 +567,7 @@ async def get_scenario(scenario_id: str, db: AsyncSession = Depends(get_db)):
     scenario = result.scalar_one_or_none()
     
     if not scenario:
-        raise HTTPException(status_code=404, detail="Scenario not found")
+        raise HTTPException(status_code=404, detail=SCENARIO_NOT_FOUND)
     
     evidence_query = select(func.count(Evidence.id)).where(Evidence.scenario_id == scenario_id)
     evidence_count_result = await db.execute(evidence_query)
@@ -589,7 +593,7 @@ async def update_scenario(scenario_id: str, update: ScenarioUpdate, db: AsyncSes
     scenario = result.scalar_one_or_none()
     
     if not scenario:
-        raise HTTPException(status_code=404, detail="Scenario not found")
+        raise HTTPException(status_code=404, detail=SCENARIO_NOT_FOUND)
     
     if update.status:
         scenario.status = update.status
@@ -615,7 +619,7 @@ async def delete_scenario(scenario_id: str, db: AsyncSession = Depends(get_db)):
     scenario = result.scalar_one_or_none()
     
     if not scenario:
-        raise HTTPException(status_code=404, detail="Scenario not found")
+        raise HTTPException(status_code=404, detail=SCENARIO_NOT_FOUND)
     
     await db.delete(scenario)
     await db.commit()
